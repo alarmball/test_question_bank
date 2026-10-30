@@ -92,7 +92,7 @@
     <div class="eyebrow">LOCAL STUDY BANK</div>
     <h1>졸업시험 문제은행</h1>
     <p>12개 주제 · 24개 문항 · 무작위 연습과 자가 채점</p>
-    <nav><a class="active" href="/" aria-current="page">문제은행</a><a href="/explanations">해설집</a><button id="logout" type="button">권한 변경</button></nav>
+    <nav><a class="active" href="/" aria-current="page">문제은행</a><a href="/wrong-notes">오답노트</a><a href="/explanations">해설집</a><button id="logout" type="button">권한 변경</button></nav>
   </header>
   <main>
     <div class="summary" aria-label="학습 현황">
@@ -227,7 +227,10 @@
         state.questions=bank.questions; state.records=progress.records; state.attempts=progress.attempts ?? progress.records.length;
         for(const section of [...new Set(state.questions.map(q=>q.section))]) { const option=document.createElement('option'); option.value=section;option.textContent=section;$('section').append(option); }
         $('count').max=state.questions.length;
-        updateStats(); renderWelcome();
+        updateStats();
+        const requested=decodeURIComponent(location.hash.slice(1));
+        const requestedQuestion=state.questions.find(q=>q.id===requested);
+        if(requestedQuestion) showQuestion(requestedQuestion); else renderWelcome();
       } catch(error) { $('question-content').replaceChildren(el('p','error',`문제은행을 불러오지 못했습니다: ${error.message}`)); }
     }
     for(const id of ['section','kind','status','search']) $(id).addEventListener(id==='search'?'input':'change',renderList);

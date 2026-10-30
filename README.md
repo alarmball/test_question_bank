@@ -1,6 +1,6 @@
 # 졸업시험 문제은행
 
-로컬 웹 문제은행입니다. 12개 주제의 24개 문항, 별도 해설집, 권한별 열람, 무작위 연습과 자가 채점을 제공합니다.
+로컬 웹 문제은행입니다. 12개 주제의 24개 문항, 별도 해설집, 권한별 열람, 무작위 연습, 자가 채점과 오답노트를 제공합니다. 전체 권한의 기본 비밀번호와 권한 식별값은 `1014`입니다.
 
 ```powershell
 python web_app.py --port 8080
@@ -10,6 +10,6 @@ python web_app.py --port 8080
 
 ## Vercel 배포
 
-`api/index.py`가 Vercel Python Function 진입점이며, `vercel.json`이 모든 앱 경로를 이 함수로 연결합니다. 배포 전에 프로젝트 환경 변수 `QB_FULL_PASSWORD`, `QB_LIMITED_PASSWORD`, `QB_SESSION_SECRET`을 설정해야 합니다. 세 값이 없으면 배포 함수가 시작되지 않습니다.
+`api/index.py`가 Vercel Python Function 진입점이며, `vercel.json`이 모든 앱 경로를 이 함수로 연결합니다. 배포 전에 프로젝트 환경 변수 `QB_FULL_PASSWORD`(전체 권한은 `1014`), `QB_LIMITED_PASSWORD`, `QB_SESSION_SECRET`을 설정해야 합니다. 세 값이 없으면 배포 함수가 시작되지 않습니다.
 
-Vercel에서는 채점 현황을 서명된 브라우저 쿠키에 저장합니다. 같은 브라우저에서는 유지되지만 다른 기기와 동기화되지 않고, 로그아웃하면 기록이 지워집니다. 로컬 실행에서는 기존의 `progress.json`을 사용합니다.
+Vercel에서는 채점 현황을 서명된 브라우저 쿠키에 저장합니다. 같은 브라우저에서는 유지되지만 다른 기기와 동기화되지 않고, 로그아웃하면 기록이 지워집니다. 최근 점수가 0점 또는 1점인 문항은 전체 권한의 오답노트에서 다시 볼 수 있습니다. 로컬 실행에서는 기존의 `progress.json`을 사용합니다.

@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>오답노트 · 졸업시험 문제은행</title>
+  <style>
+    :root { --ink:#142b43; --muted:#5e7185; --blue:#1d659d; --line:#dbe5ee; --bg:#f3f6fa; --warn:#9e5b25; }
+    * { box-sizing:border-box; } body { margin:0; background:var(--bg); color:var(--ink); font-family:"Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif; }
+    header { background:linear-gradient(120deg,#102941,#16466a); color:#fff; padding:22px max(24px,calc((100vw - 1000px)/2)); }.eyebrow{color:#99c7ec;font-size:13px;letter-spacing:.08em;font-weight:700}h1{margin:4px 0 6px;font-size:29px}header p{margin:0;color:#c2d4e3;font-size:14px}
+    nav{display:flex;gap:9px;margin-top:18px;flex-wrap:wrap}nav a,nav button{text-decoration:none;color:#cde3f4;border:1px solid #6d8ba4;padding:8px 12px;border-radius:8px;font-size:14px;font-weight:700;background:transparent;cursor:pointer}nav a.active{background:#fff;color:#102941;border-color:#fff}nav button{margin-left:auto}
+    main{max-width:1000px;margin:0 auto;padding:24px}.summary,.empty,.note{background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 4px 18px #173c5b0c}.summary{padding:20px 22px;margin-bottom:18px;display:flex;align-items:center;gap:18px}.summary strong{font-size:28px;color:var(--blue)}.summary p{margin:3px 0;color:var(--muted);line-height:1.6}.notes{display:grid;gap:15px}.note{padding:22px}.note-top{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.badge{display:inline-block;border-radius:999px;padding:5px 9px;background:#fff1de;color:var(--warn);font-size:12px;font-weight:800}.id{color:var(--blue);font-weight:800}.meta{color:var(--muted);font-size:13px;margin:11px 0}.note h2{font-size:20px;margin:12px 0}.label{font-size:13px;font-weight:800;color:var(--blue);margin:18px 0 6px}.text{line-height:1.8;white-space:pre-wrap;margin:0}.answer{background:#f1f7fc;border:1px solid #cfe0ef;border-radius:10px;padding:14px 16px;margin-top:10px}.answer[hidden]{display:none}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:19px}.actions button,.actions a{padding:10px 13px;border-radius:8px;border:1px solid #c5d6e4;background:#fff;color:var(--ink);font:inherit;font-weight:700;text-decoration:none;cursor:pointer}.actions .primary{background:var(--blue);border-color:var(--blue);color:#fff}.empty{padding:42px 25px;text-align:center}.empty h2{margin-top:0}.empty p{color:var(--muted);line-height:1.7}.error{color:#ad3434}@media(max-width:560px){header{padding:20px 16px}main{padding:14px}nav button{margin-left:0}.summary{align-items:flex-start}}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="eyebrow">REVIEW QUEUE · 권한 1014</div>
+    <h1>오답노트</h1>
+    <p>최근 자가 채점이 0점 또는 1점인 문항을 모아 다시 학습합니다.</p>
+    <nav><a href="/">문제은행</a><a class="active" href="/wrong-notes" aria-current="page">오답노트</a><a href="/explanations">해설집</a><button id="logout" type="button">권한 변경</button></nav>
+  </header>
+  <main>
+    <section class="summary" aria-live="polite"><strong id="count">0</strong><div><b>복습할 문항</b><p>2점으로 다시 채점하면 이 목록에서 자동으로 제외됩니다.</p></div></section>
+    <section id="notes" class="notes" aria-live="polite"></section>
+  </main>
+  <script>
+    const notes=$('notes'); function $(id){return document.getElementById(id);} function make(tag,className,text){const node=document.createElement(tag);if(className)node.className=className;if(text!==undefined)node.textContent=text;return node;}
+    function render(items){$('count').textContent=items.length;notes.replaceChildren();if(!items.length){const box=make('div','empty');box.append(make('h2','', '현재 오답노트가 비어 있습니다.'),make('p','', '문제은행에서 정답을 확인한 뒤 0점 또는 1점으로 채점한 문항이 여기에 표시됩니다.'),Object.assign(make('a','actions primary','문제은행으로 이동'),{href:'/'}));notes.append(box);return;}for(const q of items){const card=make('article','note');const top=make('div','note-top');top.append(make('span','id',q.id),make('span','badge',`${q.grade}점 · 복습 필요`),make('span','meta',`${q.section} · ${q.kind}`));card.append(top,make('h2','',q.topic),make('p','meta',q.source),make('p','label','문제'),make('p','text',q.question));const answer=make('section','answer');answer.hidden=true;answer.append(make('p','label','모범답안'),make('p','text',q.answer));const actions=make('div','actions');const reveal=make('button','primary','모범답안 보기');reveal.addEventListener('click',()=>{answer.hidden=false;reveal.disabled=true;reveal.textContent='모범답안 확인됨';});const retry=make('a','', '문제은행에서 다시 풀기');retry.href=`/#${encodeURIComponent(q.id)}`;const guide=make('a','', '해설집 보기');guide.href=`/explanations?chapter=${q.id.slice(0,2)}`;actions.append(reveal,retry,guide);card.append(answer,actions);notes.append(card);}}
+    async function start(){try{const response=await fetch('/api/wrong-notes');const data=await response.json();if(!response.ok)throw new Error(data.error||'오답노트를 가져오지 못했습니다.');render(data.notes);}catch(error){notes.replaceChildren(make('p','error',error.message));}}$('logout').addEventListener('click',async()=>{await fetch('/api/logout',{method:'POST'});location.replace('/login');});start();
+  </script>
+</body>
+</html>

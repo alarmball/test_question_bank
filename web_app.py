@@ -25,6 +25,11 @@ HTML = ROOT / "web" / "index.html"
 EXPLANATIONS_HTML = ROOT / "web" / "explanations.html"
 EXPLANATIONS_DATA = ROOT / "explanations.json"
 LOGIN_HTML = ROOT / "web" / "login.html"
+WRONG_NOTES_HTML = ROOT / "web" / "wrong_notes.html"
+
+# 전체 학습 공간의 권한 식별값과 기본 비밀번호. 배포 환경에서는
+# QB_FULL_PASSWORD 환경 변수가 이 기본값을 대체한다.
+FULL_AUTHORITY = "1014"
 
 
 def create_handler(bank_path: Path, progress_path: Path, serverless: bool = False, secure_cookies: bool | None = None):
@@ -40,7 +45,7 @@ def create_handler(bank_path: Path, progress_path: Path, serverless: bool = Fals
         raise ValueError("해설집의 주제와 문제은행 문항이 일치하지 않습니다.")
     lock = threading.Lock()
     sessions: dict[str, str] = {}
-    full_password = os.getenv("QB_FULL_PASSWORD", "9999" if not serverless else "")
+    full_password = os.getenv("QB_FULL_PASSWORD", FULL_AUTHORITY if not serverless else "")
     limited_password = os.getenv("QB_LIMITED_PASSWORD", "1111" if not serverless else "")
     session_secret = os.getenv("QB_SESSION_SECRET", "")
     if secure_cookies is None:
@@ -129,7 +134,7 @@ def create_handler(bank_path: Path, progress_path: Path, serverless: bool = Fals
                 self.send_json({"ok": True})
             elif path == "/api/session":
                 if self.require_role(role):
-                    self.send_json({"role": role})
+                    self.send_json({"role": role, "authority": FULL_AUTHORITY if role == "full" else None})
             elif path == "/":
                 if role is None:
                     self.redirect("/login")
@@ -142,6 +147,13 @@ def create_handler(bank_path: Path, progress_path: Path, serverless: bool = Fals
                     self.redirect("/login")
                 else:
                     self.send_bytes(EXPLANATIONS_HTML.read_bytes(), "text/html; charset=utf-8")
+            elif path == "/wrong-notes":
+                if role is None:
+                    self.redirect("/login")
+                elif role != "full":
+                    self.redirect("/explanations")
+                else:
+                    self.send_bytes(WRONG_NOTES_HTML.read_bytes(), "text/html; charset=utf-8")
             elif path == "/api/questions":
                 if not self.require_role(role, full=True):
                     return
@@ -175,6 +187,22 @@ def create_handler(bank_path: Path, progress_path: Path, serverless: bool = Fals
                 else:
                     with lock:
                         self.send_json(load_progress(progress_path))
+            elif path == "/api/wrong-notes":
+                if not self.require_role(role, full=True):
+                    return
+                if serverless:
+                    session = self.session() or {}
+                    records = [{"id": qid, "grade": grade} for qid, grade in session.get("grades", {}).items()]
+                else:
+                    with lock:
+                        records = load_progress(progress_path).get("records", [])
+                latest = {}
+                for record in records:
+                    if record.get("id") in by_id and record.get("grade") in (0, 1, 2):
+                        latest[record["id"]] = record["grade"]
+                notes = [{**by_id[qid], "grade": grade} for qid, grade in latest.items() if grade < 2]
+                notes.sort(key=lambda question: (rank.get(question["id"][:2], len(rank)), question["id"]))
+                self.send_json({"authority": FULL_AUTHORITY, "notes": notes})
             else:
                 self.send_json({"error": "경로를 찾지 못했습니다."}, 404)
 
@@ -218,7 +246,8 @@ def create_handler(bank_path: Path, progress_path: Path, serverless: bool = Fals
                         with lock:
                             sessions[token] = role
                         cookie = f"qb_session={token}; Path=/; HttpOnly; SameSite=Strict"
-                    body = json.dumps({"ok": True, "role": role}, ensure_ascii=False).encode("utf-8")
+                    body = json.dumps({"ok": True, "role": role,
+                                       "authority": FULL_AUTHORITY if role == "full" else None}, ensure_ascii=False).encode("utf-8")
                     self.send_bytes(body, "application/json; charset=utf-8", extra_headers={"Set-Cookie": cookie})
                 except (ValueError, UnicodeError, json.JSONDecodeError) as exc:
                     self.send_json({"error": str(exc)}, 400)

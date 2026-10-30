@@ -15,6 +15,7 @@
     nav { display:flex; gap:9px; margin-top:18px; }
     nav a { text-decoration:none; color:#cde3f4; border:1px solid #6d8ba4; padding:8px 12px; border-radius:8px; font-size:14px; font-weight:700; }
     nav a.active { background:#fff; color:#102941; border-color:#fff; }
+    nav .full-only { display:none; }
     nav a[href="/"] { display:none; }
     nav button { margin-left:auto; background:transparent; color:#cde3f4; border:1px solid #6d8ba4; padding:8px 12px; border-radius:8px; font:inherit; font-size:14px; font-weight:700; cursor:pointer; }
     .access { display:inline-block; margin-top:12px; color:#cde3f4; background:#ffffff1b; border:1px solid #ffffff33; border-radius:999px; padding:5px 10px; font-size:12px; }
@@ -61,7 +62,7 @@
     <div class="eyebrow">STUDY COMPANION</div>
     <h1>졸업시험 해설집</h1>
     <p>주제별 핵심 개념 · 모범답안 · 풀이 과정 · 주의할 점</p>
-    <nav><a href="/">문제은행</a><a class="active" href="/explanations" aria-current="page">해설집</a><button id="logout" type="button">권한 변경</button></nav>
+    <nav><a href="/">문제은행</a><a class="full-only" href="/wrong-notes">오답노트</a><a class="active" href="/explanations" aria-current="page">해설집</a><button id="logout" type="button">권한 변경</button></nav>
     <span id="access" class="access"></span>
   </header>
   <main>
@@ -86,7 +87,7 @@
       for(const q of ch.questions){const section=make('section','item');section.append(make('h3','',`${q.id} · ${q.kind} 문항`),make('p','meta',q.source),make('p','label','문제'),make('p','text',q.question),make('p','label','모범답안'),make('p','text answer',q.answer),make('p','label','풀이 설명'),make('p','text',q.id.endsWith('A')?ch.a_explanation:ch.b_explanation));article.append(section);}
       article.append(make('p','pitfall',`주의할 점: ${ch.pitfall}`));const footer=make('div','chapter-nav');const prev=make('button','', '← 이전 주제');const next=make('button','','다음 주제 →');prev.disabled=index===0;next.disabled=index===state.chapters.length-1;prev.addEventListener('click',()=>selectChapter(state.chapters[index-1].number));next.addEventListener('click',()=>selectChapter(state.chapters[index+1].number));footer.append(prev,next);article.append(footer);window.scrollTo({top:0,behavior:'smooth'});
     }
-    async function start(){try{const response=await fetch('/api/explanations');if(!response.ok)throw new Error('해설 데이터를 가져오지 못했습니다.');const data=await response.json();state.chapters=data.chapters;$('access').textContent=data.role==='full'?'전체 열람 권한':'10번까지 열람 권한';if(data.role==='full')document.querySelector('nav a[href="/"]').style.display='inline-block';renderTopics();const requested=new URLSearchParams(location.search).get('chapter');selectChapter(state.chapters.some(x=>x.number===requested)?requested:state.chapters[0].number);}catch(error){$('chapter').replaceChildren(make('p','empty',error.message));}}
+    async function start(){try{const response=await fetch('/api/explanations');if(!response.ok)throw new Error('해설 데이터를 가져오지 못했습니다.');const data=await response.json();state.chapters=data.chapters;$('access').textContent=data.role==='full'?'전체 열람 권한 · 1014':'10번까지 열람 권한';if(data.role==='full'){document.querySelector('nav a[href="/"]').style.display='inline-block';document.querySelector('.full-only').style.display='inline-block';}renderTopics();const requested=new URLSearchParams(location.search).get('chapter');selectChapter(state.chapters.some(x=>x.number===requested)?requested:state.chapters[0].number);}catch(error){$('chapter').replaceChildren(make('p','empty',error.message));}}
     $('search').addEventListener('input',renderTopics);$('print').addEventListener('click',()=>window.print());start();
     $('previous').addEventListener('click',()=>{const i=state.chapters.findIndex(x=>x.number===state.selected);if(i>0)selectChapter(state.chapters[i-1].number);});
     $('next').addEventListener('click',()=>{const i=state.chapters.findIndex(x=>x.number===state.selected);if(i<state.chapters.length-1)selectChapter(state.chapters[i+1].number);});

@@ -65,12 +65,19 @@ def main():
         assert [ch["number"] for ch in chapters] == [f"{n:02d}" for n in range(1, 11)]
 
         full = client()
-        assert request(server, full, "/api/login", {"password": "test-full"})[1]["role"] == "full"
+        login = request(server, full, "/api/login", {"password": "test-full"})[1]
+        assert login["role"] == "full"
+        assert login["authority"] == "1014"
         assert len(request(server, full, "/api/questions")[1]["questions"]) == 24
         grade = request(server, full, "/api/grade", {"id": "06A", "grade": 2})[1]
         assert grade["progress"]["attempts"] == 1
         assert grade["progress"]["records"] == [{"id": "06A", "grade": 2}]
         assert request(server, full, "/api/progress")[1]["attempts"] == 1
+        assert request(server, full, "/api/wrong-notes")[1]["notes"] == []
+        request(server, full, "/api/grade", {"id": "04A", "grade": 1})
+        notes = request(server, full, "/api/wrong-notes")[1]["notes"]
+        assert [(note["id"], note["grade"]) for note in notes] == [("04A", 1)]
+        assert notes[0]["answer"]
         assert not PROGRESS.exists()
     finally:
         server.shutdown()
@@ -79,8 +86,8 @@ def main():
     server = launch()
     try:
         persisted = request(server, full, "/api/progress")[1]
-        assert persisted["records"] == [{"id": "06A", "grade": 2}]
-        assert persisted["attempts"] == 1
+        assert persisted["records"] == [{"id": "06A", "grade": 2}, {"id": "04A", "grade": 1}]
+        assert persisted["attempts"] == 2
         assert request(server, full, "/api/logout", {})[0] == 200
         assert request(server, full, "/api/progress")[0] == 401
     finally:
