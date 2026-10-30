@@ -3,10 +3,15 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
+import hashlib
 import hmac
 import json
+import os
 import secrets
 import threading
+import time
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -22,7 +27,7 @@ EXPLANATIONS_DATA = ROOT / "explanations.json"
 LOGIN_HTML = ROOT / "web" / "login.html"
 
 
-def create_handler(bank_path: Path, progress_path: Path):
+def create_handler(bank_path: Path, progress_path: Path, serverless: bool = False, secure_cookies: bool | None = None):
     bank, questions = load_bank(bank_path)
     by_id = {question["id"]: question for question in questions}
     order = [f"{number:02d}" for number in range(1, 13)]
@@ -35,6 +40,35 @@ def create_handler(bank_path: Path, progress_path: Path):
         raise ValueError("해설집의 주제와 문제은행 문항이 일치하지 않습니다.")
     lock = threading.Lock()
     sessions: dict[str, str] = {}
+    full_password = os.getenv("QB_FULL_PASSWORD", "9999" if not serverless else "")
+    limited_password = os.getenv("QB_LIMITED_PASSWORD", "1111" if not serverless else "")
+    session_secret = os.getenv("QB_SESSION_SECRET", "")
+    if secure_cookies is None:
+        secure_cookies = serverless
+    if serverless and (not full_password or not limited_password or not session_secret):
+        raise ValueError("Vercel 환경 변수 QB_FULL_PASSWORD, QB_LIMITED_PASSWORD, QB_SESSION_SECRET이 필요합니다.")
+
+    def sign(payload: dict) -> str:
+        body = base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode()).rstrip(b"=")
+        signature = base64.urlsafe_b64encode(hmac.new(session_secret.encode(), body, hashlib.sha256).digest()).rstrip(b"=")
+        return body.decode() + "." + signature.decode()
+
+    def verify(token: str) -> dict | None:
+        try:
+            body, signature = token.split(".", 1)
+            expected = base64.urlsafe_b64encode(hmac.new(session_secret.encode(), body.encode(), hashlib.sha256).digest()).rstrip(b"=").decode()
+            if not hmac.compare_digest(signature, expected):
+                return None
+            payload = json.loads(base64.urlsafe_b64decode(body + "=" * (-len(body) % 4)))
+            if payload.get("role") not in {"full", "limited"} or payload.get("exp", 0) < time.time():
+                return None
+            return payload
+        except (ValueError, UnicodeError, KeyError, TypeError, binascii.Error):
+            return None
+
+    def cookie_header(payload: dict) -> str:
+        secure = "; Secure" if secure_cookies else ""
+        return f"qb_session={sign(payload)}; Max-Age=2592000; Path=/; HttpOnly; SameSite=Strict{secure}"
 
     class Handler(BaseHTTPRequestHandler):
         def send_bytes(self, data: bytes, content_type: str, status: int = 200, extra_headers: dict[str, str] | None = None) -> None:
@@ -57,15 +91,22 @@ def create_handler(bank_path: Path, progress_path: Path):
                 headers["Set-Cookie"] = cookie
             self.send_bytes(b"", "text/plain; charset=utf-8", 303, headers)
 
-        def role(self) -> str | None:
+        def session(self) -> dict | None:
             raw = self.headers.get("Cookie", "")
             try:
                 cookie = SimpleCookie(raw)
                 token = cookie["qb_session"].value if "qb_session" in cookie else ""
             except Exception:
                 return None
+            if serverless:
+                return verify(token)
             with lock:
-                return sessions.get(token)
+                role = sessions.get(token)
+            return {"role": role} if role else None
+
+        def role(self) -> str | None:
+            session = self.session()
+            return session.get("role") if session else None
 
         def require_role(self, role: str | None, full: bool = False) -> bool:
             if role is None:
@@ -126,8 +167,14 @@ def create_handler(bank_path: Path, progress_path: Path):
             elif path == "/api/progress":
                 if not self.require_role(role, full=True):
                     return
-                with lock:
-                    self.send_json(load_progress(progress_path))
+                if serverless:
+                    session = self.session() or {}
+                    grades = session.get("grades", {})
+                    self.send_json({"version": 1, "records": [{"id": qid, "grade": grade} for qid, grade in grades.items()],
+                                    "attempts": session.get("attempts", 0), "storage": "browser"})
+                else:
+                    with lock:
+                        self.send_json(load_progress(progress_path))
             else:
                 self.send_json({"error": "경로를 찾지 못했습니다."}, 404)
 
@@ -140,9 +187,11 @@ def create_handler(bank_path: Path, progress_path: Path):
                     token = cookie["qb_session"].value if "qb_session" in cookie else ""
                 except Exception:
                     token = ""
-                with lock:
-                    sessions.pop(token, None)
-                self.send_bytes(b'{"ok":true}', "application/json; charset=utf-8", extra_headers={"Set-Cookie": "qb_session=; Max-Age=0; Path=/; HttpOnly; SameSite=Strict"})
+                if not serverless:
+                    with lock:
+                        sessions.pop(token, None)
+                secure = "; Secure" if secure_cookies else ""
+                self.send_bytes(b'{"ok":true}', "application/json; charset=utf-8", extra_headers={"Set-Cookie": f"qb_session=; Max-Age=0; Path=/; HttpOnly; SameSite=Strict{secure}"})
                 return
             if path == "/api/login":
                 try:
@@ -153,18 +202,24 @@ def create_handler(bank_path: Path, progress_path: Path):
                     password = payload.get("password", "")
                     if not isinstance(password, str):
                         raise ValueError("비밀번호 형식이 올바르지 않습니다.")
-                    if hmac.compare_digest(password, "9999"):
+                    if hmac.compare_digest(password, full_password):
                         role = "full"
-                    elif hmac.compare_digest(password, "1111"):
+                    elif hmac.compare_digest(password, limited_password):
                         role = "limited"
                     else:
                         self.send_json({"error": "비밀번호가 올바르지 않습니다."}, 401)
                         return
-                    token = secrets.token_urlsafe(32)
-                    with lock:
-                        sessions[token] = role
+                    if serverless:
+                        issued = {"role": role, "exp": int(time.time()) + 2592000,
+                                  "grades": {} if role == "full" else {}, "attempts": 0}
+                        cookie = cookie_header(issued)
+                    else:
+                        token = secrets.token_urlsafe(32)
+                        with lock:
+                            sessions[token] = role
+                        cookie = f"qb_session={token}; Path=/; HttpOnly; SameSite=Strict"
                     body = json.dumps({"ok": True, "role": role}, ensure_ascii=False).encode("utf-8")
-                    self.send_bytes(body, "application/json; charset=utf-8", extra_headers={"Set-Cookie": f"qb_session={token}; Path=/; HttpOnly; SameSite=Strict"})
+                    self.send_bytes(body, "application/json; charset=utf-8", extra_headers={"Set-Cookie": cookie})
                 except (ValueError, UnicodeError, json.JSONDecodeError) as exc:
                     self.send_json({"error": str(exc)}, 400)
                 return
@@ -182,10 +237,22 @@ def create_handler(bank_path: Path, progress_path: Path):
                 grade = payload.get("grade")
                 if qid not in by_id or type(grade) is not int or grade not in (0, 1, 2):
                     raise ValueError("문항 또는 점수가 올바르지 않습니다.")
-                with lock:
-                    progress = load_progress(progress_path)
-                    record_grade(progress, progress_path, qid, grade)
-                self.send_json({"ok": True, "record_count": len(progress["records"])})
+                if serverless:
+                    session = self.session() or {}
+                    grades = dict(session.get("grades", {}))
+                    grades[qid] = grade
+                    attempts = int(session.get("attempts", 0)) + 1
+                    updated = {**session, "grades": grades, "attempts": attempts}
+                    records = [{"id": key, "grade": value} for key, value in grades.items()]
+                    body = json.dumps({"ok": True, "record_count": attempts,
+                                       "progress": {"version": 1, "records": records, "attempts": attempts}},
+                                      ensure_ascii=False).encode("utf-8")
+                    self.send_bytes(body, "application/json; charset=utf-8", extra_headers={"Set-Cookie": cookie_header(updated)})
+                else:
+                    with lock:
+                        progress = load_progress(progress_path)
+                        record_grade(progress, progress_path, qid, grade)
+                    self.send_json({"ok": True, "record_count": len(progress["records"])})
             except (ValueError, UnicodeError, json.JSONDecodeError) as exc:
                 self.send_json({"error": str(exc)}, 400)
 

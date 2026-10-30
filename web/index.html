@@ -119,7 +119,7 @@
     </div>
   </main>
   <script>
-    const state = { questions: [], selected: null, queue: [], index: -1, revealed: false, records: [] };
+    const state = { questions: [], selected: null, queue: [], index: -1, revealed: false, records: [], attempts: 0 };
     const $ = id => document.getElementById(id);
     const api = async (url, options) => {
       const response = await fetch(url, options);
@@ -156,7 +156,7 @@
       $('total').textContent=state.questions.length;
       $('reviewed').textContent=latest.size;
       $('mastered').textContent=[...latest.values()].filter(x=>x===2).length;
-      $('attempts').textContent=state.records.length;
+      $('attempts').textContent=state.attempts;
       $('overall-progress').style.width=`${Math.round(latest.size/Math.max(1,state.questions.length)*100)}%`;
       renderList();
     }
@@ -198,8 +198,9 @@
       for (const [label,grade] of [['0점 · 다시',0],['1점 · 부분',1],['2점 · 정확',2]]) {
         const button=el('button','',label); button.disabled=true;
         button.addEventListener('click',async()=>{
-          try { await api('/api/grade',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:q.id,grade})});
-            state.records.push({id:q.id,grade}); updateStats(); if(state.queue.length) nextQuestion(); else {grades.forEach(b=>b.disabled=true);box.append(el('p','study-note',`${grade}점으로 기록했습니다. 왼쪽에서 다음 문항을 선택하세요.`));} }
+          try { const result=await api('/api/grade',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:q.id,grade})});
+            if(result.progress){state.records=result.progress.records;state.attempts=result.progress.attempts;}else{state.records.push({id:q.id,grade});state.attempts=state.records.length;}
+            updateStats(); if(state.queue.length) nextQuestion(); else {grades.forEach(b=>b.disabled=true);box.append(el('p','study-note',`${grade}점으로 기록했습니다. 왼쪽에서 다음 문항을 선택하세요.`));} }
           catch(error) { alert(error.message); }
         });
         grades.push(button); actions.append(button);
@@ -223,7 +224,7 @@
     async function start() {
       try {
         const [bank,progress]=await Promise.all([api('/api/questions'),api('/api/progress')]);
-        state.questions=bank.questions; state.records=progress.records;
+        state.questions=bank.questions; state.records=progress.records; state.attempts=progress.attempts ?? progress.records.length;
         for(const section of [...new Set(state.questions.map(q=>q.section))]) { const option=document.createElement('option'); option.value=section;option.textContent=section;$('section').append(option); }
         $('count').max=state.questions.length;
         updateStats(); renderWelcome();

@@ -41,3 +41,7 @@ python question_bank.py stats
 - `progress.json`: 처음 채점할 때 자동 생성되는 학습 기록
 
 문항을 고치려면 `question_bank.json`의 `question`과 `answer`를 수정하세요. `id`는 중복되지 않게 유지해야 합니다.
+
+## Vercel
+
+Vercel 배포는 `api/index.py`와 `vercel.json`으로 구성됩니다. 프로젝트 환경 변수 `QB_FULL_PASSWORD`, `QB_LIMITED_PASSWORD`, `QB_SESSION_SECRET`을 먼저 설정하세요. `QB_SESSION_SECRET`은 길고 임의적인 문자열을 사용합니다. 배포 환경의 채점 현황은 브라우저 쿠키에 저장되므로 다른 기기와 동기화되지 않으며 로그아웃하면 사라집니다.

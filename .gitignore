@@ -5,3 +5,8 @@ tmp/
 progress.json
 *.tmp
 .env
+.env.local
+.vercel/
+
+.vercel
+.env*
