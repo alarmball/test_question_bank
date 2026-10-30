@@ -31,9 +31,9 @@ for section, entries in values["units"]:
                 "section": section.split(". ", 1)[-1],
                 "topic": topic,
                 "kind": "핵심" if variant == "A" else "응용",
-                "source": source,
+                "source": source.replace("원문", "학습 자료"),
                 "question": question,
-                "answer": answer,
+                "answer": answer.replace("원문 수치", "제시된 수치").replace("원문", "학습 자료"),
             })
 
 questions.sort(key=lambda question: question["id"])
@@ -42,7 +42,7 @@ bank = {
     "title": "졸업시험 문제은행",
     "version": 1,
     "source": "졸업시험 드가자.pdf (5쪽, 12개 주제)",
-    "note": "9번의 산업 통계는 원문에 출처·집계 기준이 없어 검증형 문항으로 구성함.",
+    "note": "9번의 산업 통계는 학습 자료에 출처·집계 기준이 없어 검증형 문항으로 구성함.",
     "questions": questions,
 }
 target = ROOT / "question_bank.json"
